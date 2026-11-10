@@ -58,13 +58,30 @@
   /* お散歩日記 */
   #walk { display: none; padding: 12px 16px 24px; background: var(--card); border-top: 1px solid var(--line); gap: 10px; }
   #walk.show { display: grid; }
+  .walk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   #walkTitle { font-size: 16px; font-weight: 700; margin: 0; }
+  .badge { flex: none; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    background: #e8f3ed; color: var(--accent); }
+  .badge.done { background: var(--accent); color: var(--accent-ink); }
+  .progress { display: flex; gap: 4px; }
+  .progress span { flex: 1; height: 6px; border-radius: 3px; background: var(--line); transition: background .3s; }
+  .progress span.on { background: var(--accent); }
+  #walkStep, #walkDone { display: grid; gap: 10px; }
+  #walkDone { display: none; }
+  #walk.finished #walkStep { display: none; }
+  #walk.finished #walkDone { display: grid; }
+  .done-head { text-align: center; padding: 12px 0 4px; }
+  .done-flag { font-size: 40px; line-height: 1; }
+  .done-title { font-size: 20px; font-weight: 700; margin: 8px 0 4px; }
+  .done-stats { font-size: 13px; color: var(--sub); margin: 0; }
+  .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .thumbs button { padding: 0; border: none; background: none; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 10; }
+  .thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
   #walkImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: #e9e8e2; display: block; }
   #walkText { font-size: 15px; line-height: 1.8; margin: 0; min-height: 3.6em; }
   #walkCount { font-size: 12px; color: var(--sub); }
-  #walkSummary { font-size: 14px; line-height: 1.8; color: var(--sub); margin: 0; padding: 10px 12px;
-    background: var(--bg); border-radius: 10px; display: none; }
-  #walkSummary.show { display: block; }
+  #walkSummary { font-size: 15px; line-height: 1.8; margin: 0; padding: 12px 14px;
+    background: var(--bg); border-radius: 10px; }
   .walker { font-size: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
 
   /* 設定画面 */
@@ -153,17 +170,37 @@
   <button id="aiWalk" class="primary" type="button">AIにお散歩してもらう</button>
 </div>
 
-<section id="walk" aria-live="polite">
-  <p id="walkTitle"></p>
-  <img id="walkImg" alt="">
-  <div id="walkCount"></div>
-  <p id="walkText"></p>
-  <div class="row">
-    <button id="walkPrev" class="secondary" type="button" style="flex:1">◀ 前</button>
-    <button id="walkPlay" class="secondary" type="button" style="flex:1">一時停止</button>
-    <button id="walkNext" class="secondary" type="button" style="flex:1">次 ▶</button>
+<section id="walk">
+  <div class="walk-head">
+    <p id="walkTitle"></p>
+    <span id="walkBadge" class="badge"></span>
   </div>
-  <p id="walkSummary"></p>
+  <div id="walkProgress" class="progress" aria-hidden="true"></div>
+
+  <div id="walkStep" aria-live="polite">
+    <img id="walkImg" alt="">
+    <div id="walkCount"></div>
+    <p id="walkText"></p>
+    <div class="row">
+      <button id="walkPrev" class="secondary" type="button" style="flex:1">◀ 前</button>
+      <button id="walkPlay" class="secondary" type="button" style="flex:1">一時停止</button>
+      <button id="walkNext" class="secondary" type="button" style="flex:1">次 ▶</button>
+    </div>
+  </div>
+
+  <div id="walkDone" aria-live="polite">
+    <div class="done-head">
+      <div class="done-flag" aria-hidden="true">🏁</div>
+      <p class="done-title">おさんぽ おしまい</p>
+      <p id="doneStats" class="done-stats"></p>
+    </div>
+    <p id="walkSummary"></p>
+    <div id="doneThumbs" class="thumbs"></div>
+    <div class="row">
+      <button id="walkReplay" class="secondary" type="button" style="flex:1">最初から見る</button>
+      <button id="walkAnother" class="secondary" type="button" style="flex:1">別のルートで歩く</button>
+    </div>
+  </div>
 </section>
 
 <script>
@@ -676,8 +713,20 @@ entriesは写真と同じ${stops.length}個にしてください。`,
       stops.forEach((s, i) => (s.text = diary.entries[i] || "……（ここでは言葉が出てこなかったみたい）"));
 
       $("walkTitle").textContent = diary.title;
-      $("walkSummary").textContent = diary.summary;
-      $("walkSummary").classList.remove("show");
+      $("walkSummary").textContent = diary.summary || "楽しいお散歩でした。";
+      $("doneStats").textContent = `約 ${km.toFixed(1)} km ・ ${stops.length} か所で立ち止まりました`;
+      $("walkProgress").innerHTML = stops.map(() => "<span></span>").join("");
+      $("doneThumbs").innerHTML = "";
+      stops.forEach((s, i) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.setAttribute("aria-label", (i + 1) + "か所目を見る");
+        const img = document.createElement("img");
+        img.src = s.img.blobUrl; img.alt = "";
+        b.appendChild(img);
+        b.onclick = () => { walk.playing = false; showStop(i); schedule(); };
+        $("doneThumbs").appendChild(b);
+      });
       $("walk").classList.add("show");
       walk = { stops, idx: 0, timer: null, playing: true };
       showStop(0);
@@ -692,19 +741,45 @@ entriesは写真と同じ${stops.length}個にしてください。`,
     }
   }
 
+  function setProgress(doneCount) {
+    [...$("walkProgress").children].forEach((el, k) => el.classList.toggle("on", k < doneCount));
+  }
+
   function showStop(i) {
     const s = walk.stops[i];
+    const n = walk.stops.length;
     walk.idx = i;
+    $("walk").classList.remove("finished");
+    $("walkBadge").textContent = "🚶 おさんぽ中";
+    $("walkBadge").classList.remove("done");
     $("walkImg").src = s.img.blobUrl;
-    $("walkImg").alt = "地点" + (i + 1) + "のストリートビュー";
+    $("walkImg").alt = (i + 1) + "か所目のストリートビュー";
     $("walkText").textContent = s.text;
-    $("walkCount").textContent = `${i + 1} / ${walk.stops.length} 地点目`;
+    $("walkCount").textContent = `${i + 1} / ${n} か所目`;
     $("walkPrev").disabled = i === 0;
-    $("walkNext").disabled = i === walk.stops.length - 1;
-    if (i === walk.stops.length - 1) $("walkSummary").classList.add("show");
+    $("walkNext").textContent = i === n - 1 ? "ゴールへ ▶" : "次 ▶";
+    setProgress(i + 1);
+    walkerMarker.content.textContent = "🚶";
     walkerMarker.position = s.panoPos || s.pos;
     walkerMarker.map = map;
     map.panTo(s.panoPos || s.pos);
+  }
+
+  // ゴール画面：スタート地点に戻って、全体の感想を見せる
+  function showFinish() {
+    clearTimeout(walk.timer);
+    walk.playing = false;
+    walk.idx = walk.stops.length;
+    $("walk").classList.add("finished");
+    $("walkBadge").textContent = "🏁 ゴール";
+    $("walkBadge").classList.add("done");
+    setProgress(walk.stops.length);
+    walkerMarker.content.textContent = "🏁";
+    walkerMarker.position = start;
+    const bounds = new google.maps.LatLngBounds();
+    routePath.forEach((p) => bounds.extend(p));
+    map.fitBounds(bounds, 40);
+    $("walk").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function schedule() {
@@ -713,7 +788,7 @@ entriesは写真と同じ${stops.length}個にしてください。`,
     if (!walk.playing) return;
     walk.timer = setTimeout(() => {
       if (walk.idx < walk.stops.length - 1) { showStop(walk.idx + 1); schedule(); }
-      else { walk.playing = false; $("walkPlay").textContent = "最初から"; }
+      else showFinish();
     }, 6000);
   }
 
@@ -726,13 +801,15 @@ entriesは写真と同じ${stops.length}個にしてください。`,
 
   $("aiWalk").onclick = startAiWalk;
   $("walkPrev").onclick = () => { if (!walk) return; walk.playing = false; showStop(Math.max(0, walk.idx - 1)); schedule(); };
-  $("walkNext").onclick = () => { if (!walk) return; walk.playing = false; showStop(Math.min(walk.stops.length - 1, walk.idx + 1)); schedule(); };
-  $("walkPlay").onclick = () => {
+  $("walkNext").onclick = () => {
     if (!walk) return;
-    if (!walk.playing && walk.idx === walk.stops.length - 1) showStop(0);
-    walk.playing = !walk.playing;
-    schedule();
+    walk.playing = false;
+    if (walk.idx >= walk.stops.length - 1) showFinish();
+    else { showStop(walk.idx + 1); schedule(); }
   };
+  $("walkPlay").onclick = () => { if (!walk) return; walk.playing = !walk.playing; schedule(); };
+  $("walkReplay").onclick = () => { if (!walk) return; walk.playing = true; showStop(0); schedule(); };
+  $("walkAnother").onclick = () => { stopWalk(); window.scrollTo({ top: 0, behavior: "smooth" }); makeRoute(); };
 
   // ---------- 起動 ----------
   const saved = store.get(K_MAPS);
