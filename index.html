@@ -10,9 +10,9 @@
     --accent: #2f7d5b; --accent-ink: #ffffff; --line: #dcdcd3; --err: #b3261e;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; }
-  body { display: flex; flex-direction: column; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
   header { display: flex; align-items: center; justify-content: space-between;
     padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
   header h1 { font-size: 17px; margin: 0; }
@@ -31,8 +31,9 @@
   .primary:disabled { opacity: .5; }
   .secondary { border: 1px solid var(--line); background: var(--card); border-radius: 10px;
     padding: 10px 12px; font-size: 14px; color: var(--ink); text-decoration: none; text-align: center; }
+  .secondary:disabled { opacity: .4; }
   #startLabel { font-size: 13px; color: var(--sub); }
-  #map { flex: 1; min-height: 280px; }
+  #map { height: 46vh; min-height: 260px; }
   #result { padding: 10px 16px; background: var(--card); border-top: 1px solid var(--line); display: none; gap: 8px; }
   #result.show { display: grid; }
   #result .stats { font-size: 15px; }
@@ -40,16 +41,30 @@
   #msg.show { display: block; }
   #msg.err { background: #fbe9e7; color: var(--err); }
   #msg.info { background: #e8f3ed; color: var(--accent); }
-  /* キー入力画面 */
+
+  /* お散歩日記 */
+  #walk { display: none; padding: 12px 16px 24px; background: var(--card); border-top: 1px solid var(--line); gap: 10px; }
+  #walk.show { display: grid; }
+  #walkTitle { font-size: 16px; font-weight: 700; margin: 0; }
+  #walkImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: #e9e8e2; display: block; }
+  #walkText { font-size: 15px; line-height: 1.8; margin: 0; min-height: 3.6em; }
+  #walkCount { font-size: 12px; color: var(--sub); }
+  #walkSummary { font-size: 14px; line-height: 1.8; color: var(--sub); margin: 0; padding: 10px 12px;
+    background: var(--bg); border-radius: 10px; display: none; }
+  #walkSummary.show { display: block; }
+  .walker { font-size: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+
+  /* 設定画面 */
   #setup { position: fixed; inset: 0; background: var(--bg); display: none; padding: 24px 20px;
     overflow: auto; z-index: 10; }
   #setup.show { display: block; }
   #setup .box { max-width: 480px; margin: 0 auto; background: var(--card); border: 1px solid var(--line);
     border-radius: 14px; padding: 20px; display: grid; gap: 12px; }
   #setup h2 { margin: 0; font-size: 18px; }
+  #setup h3 { margin: 8px 0 0; font-size: 15px; }
   #setup p, #setup li { font-size: 14px; line-height: 1.6; color: var(--sub); margin: 0; }
   #setup ol { margin: 0; padding-left: 20px; }
-  #keyInput { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; }
+  #setup input[type=text] { width: 100%; padding: 10px; font-size: 15px; border: 1px solid var(--line); border-radius: 8px; }
   .check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 </style>
 </head>
@@ -57,17 +72,27 @@
 
 <div id="setup">
   <div class="box">
-    <h2>Google Maps APIキーを入力</h2>
-    <p>Google Cloud Consoleで次の3つを有効にしたキーを使ってください。</p>
+    <h2>APIキーの設定</h2>
+
+    <h3>Google Maps APIキー（必須）</h3>
+    <p>Google Cloud Consoleで次の4つを有効にしたキーを使ってください。</p>
     <ol>
       <li>Maps JavaScript API</li>
       <li>Places API (New)</li>
       <li>Routes API</li>
+      <li>Street View Static API（AIお散歩で使用）</li>
     </ol>
     <input id="keyInput" type="text" placeholder="AIza..." autocomplete="off" spellcheck="false">
+
+    <h3>Gemini APIキー（AIお散歩用）</h3>
+    <p>Google AI Studio（aistudio.google.com）で無料で発行できます。</p>
+    <input id="geminiInput" type="text" placeholder="AIza..." autocomplete="off" spellcheck="false">
+    <label class="small" for="modelInput">モデル名（よく分からなければそのままで大丈夫）</label>
+    <input id="modelInput" type="text" placeholder="gemini-flash-latest" autocomplete="off" spellcheck="false">
+
     <label class="check"><input id="rememberKey" type="checkbox" checked> このブラウザに保存する</label>
-    <button id="saveKey" class="primary">はじめる</button>
-    <button id="clearKey" class="secondary" type="button">保存したキーを削除</button>
+    <button id="saveKey" class="primary">保存してはじめる</button>
+    <button id="clearKey" class="secondary" type="button">保存したキーをすべて削除</button>
     <p id="setupErr" style="color:var(--err)"></p>
   </div>
 </div>
@@ -107,14 +132,31 @@
     <button id="reroll" class="secondary" type="button" style="flex:1">別のルート</button>
     <a id="openGmaps" class="secondary" target="_blank" rel="noopener" style="flex:1">Googleマップで開く</a>
   </div>
+  <button id="aiWalk" class="primary" type="button">AIにお散歩してもらう</button>
 </div>
+
+<section id="walk" aria-live="polite">
+  <p id="walkTitle"></p>
+  <img id="walkImg" alt="">
+  <div id="walkCount"></div>
+  <p id="walkText"></p>
+  <div class="row">
+    <button id="walkPrev" class="secondary" type="button" style="flex:1">◀ 前</button>
+    <button id="walkPlay" class="secondary" type="button" style="flex:1">一時停止</button>
+    <button id="walkNext" class="secondary" type="button" style="flex:1">次 ▶</button>
+  </div>
+  <p id="walkSummary"></p>
+</section>
 
 <script>
 (() => {
-  const STORAGE_KEY = "osanpo_maps_api_key";
+  const K_MAPS = "osanpo_maps_api_key";
+  const K_GEMINI = "osanpo_gemini_key";
+  const K_MODEL = "osanpo_gemini_model";
+  const DEFAULT_MODEL = "gemini-flash-latest";
   const $ = (id) => document.getElementById(id);
 
-  // ---------- 画面にエラーを出す（コンソールを見なくて済むように） ----------
+  // ---------- 画面にメッセージを出す ----------
   function showMsg(text, type = "err") {
     const el = $("msg");
     el.textContent = text;
@@ -124,44 +166,55 @@
   window.addEventListener("error", (e) => showMsg("エラー: " + e.message));
   window.addEventListener("unhandledrejection", (e) => showMsg("エラー: " + (e.reason?.message || e.reason)));
 
-  // ---------- APIキーの保存（localStorageが使えない環境でも落ちない） ----------
+  // ---------- 保存（localStorageが使えない環境でも落ちない） ----------
   const store = {
-    get() { try { return localStorage.getItem(STORAGE_KEY); } catch { return null; } },
-    set(v) { try { localStorage.setItem(STORAGE_KEY, v); } catch {} },
-    clear() { try { localStorage.removeItem(STORAGE_KEY); } catch {} },
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
   };
 
   let apiKey = null;
+  let geminiKey = store.get(K_GEMINI) || "";
+  let geminiModel = store.get(K_MODEL) || DEFAULT_MODEL;
   let mapsLoaded = false;
 
   function openSetup(errText = "") {
-    $("keyInput").value = apiKey || store.get() || "";
+    $("keyInput").value = apiKey || store.get(K_MAPS) || "";
+    $("geminiInput").value = geminiKey;
+    $("modelInput").value = geminiModel === DEFAULT_MODEL ? "" : geminiModel;
     $("setupErr").textContent = errText;
     $("setup").classList.add("show");
   }
   $("openSetup").onclick = () => openSetup();
-  $("clearKey").onclick = () => { store.clear(); $("keyInput").value = ""; $("setupErr").textContent = "削除しました"; };
+  $("clearKey").onclick = () => {
+    [K_MAPS, K_GEMINI, K_MODEL].forEach(store.del);
+    $("keyInput").value = ""; $("geminiInput").value = ""; $("modelInput").value = "";
+    geminiKey = ""; geminiModel = DEFAULT_MODEL;
+    $("setupErr").textContent = "削除しました";
+  };
   $("saveKey").onclick = () => {
     const k = $("keyInput").value.trim();
-    if (!k) { $("setupErr").textContent = "キーを入力してください"; return; }
-    if ($("rememberKey").checked) store.set(k); else store.clear();
-    if (mapsLoaded && k !== apiKey) {
-      // Maps JSは1ページで1回しか読み込めないので、キー変更時は再読み込み
-      location.reload();
-      return;
+    if (!k) { $("setupErr").textContent = "Google Maps APIキーを入力してください"; return; }
+    geminiKey = $("geminiInput").value.trim();
+    geminiModel = $("modelInput").value.trim() || DEFAULT_MODEL;
+    if ($("rememberKey").checked) {
+      store.set(K_MAPS, k);
+      geminiKey ? store.set(K_GEMINI, geminiKey) : store.del(K_GEMINI);
+      store.set(K_MODEL, geminiModel);
+    } else {
+      [K_MAPS, K_GEMINI, K_MODEL].forEach(store.del);
     }
+    if (mapsLoaded && k !== apiKey) { location.reload(); return; } // Maps JSは1ページ1回しか読めない
     apiKey = k;
     $("setup").classList.remove("show");
     loadMaps(k);
   };
 
-  // キーが間違っているとGoogleがこれを呼ぶ
   window.gm_authFailure = () => {
-    store.clear();
-    openSetup("APIキーが使えませんでした。キーと、有効にしたAPIを確認してください。");
+    store.del(K_MAPS);
+    openSetup("Google Maps APIキーが使えませんでした。キーと、有効にしたAPIを確認してください。");
   };
 
-  // ---------- Maps JSの読み込み（キーが決まってから1回だけ） ----------
   function loadMaps(key) {
     if (mapsLoaded) return;
     mapsLoaded = true;
@@ -174,38 +227,40 @@
     document.head.appendChild(s);
   }
 
-  // ---------- 本体 ----------
-  let map, startMarker, routeLine, wpMarkers = [];
-  let start = null;          // {lat, lng}
+  // ---------- 地図とルート ----------
+  let map, startMarker, walkerMarker, routeLine, AdvMarker, svService;
+  let start = null;
   let targetKm = 2;
-  let lastWaypoints = [];
+  let routePath = [];   // google.maps.LatLng[]
 
   async function init() {
     const { Map } = await google.maps.importLibrary("maps");
     const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
     const placesLib = await google.maps.importLibrary("places");
+    const svLib = await google.maps.importLibrary("streetView");
     await google.maps.importLibrary("geometry");
+    AdvMarker = AdvancedMarkerElement;
+    svService = new svLib.StreetViewService();
 
     map = new Map($("map"), {
       center: { lat: 35.681, lng: 139.767 }, zoom: 15,
       mapId: "DEMO_MAP_ID", disableDefaultUI: true, zoomControl: true,
       gestureHandling: "greedy",
     });
-
     startMarker = new AdvancedMarkerElement({ map: null, title: "スタート" });
+    const w = document.createElement("div");
+    w.className = "walker"; w.textContent = "🚶";
+    walkerMarker = new AdvancedMarkerElement({ map: null, content: w, title: "おさんぽ中" });
 
-    // 新しいPlaces APIの検索ボックス（旧Autocompleteは新規利用不可）
     const ac = new placesLib.PlaceAutocompleteElement({ includedRegionCodes: ["jp"] });
     ac.placeholder = "駅名・住所・施設名で検索";
     $("searchBox").appendChild(ac);
-
     const onPlace = async (place) => {
       await place.fetchFields({ fields: ["displayName", "location"] });
       if (!place.location) { showMsg("その場所の位置が取れませんでした"); return; }
       setStart({ lat: place.location.lat(), lng: place.location.lng() }, place.displayName);
     };
     ac.addEventListener("gmp-select", (e) => onPlace(e.placePrediction.toPlace()).catch(err => showMsg(err.message)));
-    // 古いバージョンのイベント名にも対応
     ac.addEventListener("gmp-placeselect", (e) => e.place && onPlace(e.place).catch(err => showMsg(err.message)));
 
     map.addListener("click", (e) => setStart({ lat: e.latLng.lat(), lng: e.latLng.lng() }, "地図で指定した地点"));
@@ -241,17 +296,15 @@
     };
   });
 
-  // ---------- ルートづくり ----------
-  // スタートから少し離れた円周上に経由地を置いて、ぐるっと戻ってくる周回ルートを作る
   function makeWaypoints(origin, km, scale = 1) {
-    const ROAD_FACTOR = 1.3;                        // 直線より道は長くなる分
-    const r = (km * 1000 * scale) / (4 * Math.SQRT2 * ROAD_FACTOR); // 4点の正方形周回
+    const ROAD_FACTOR = 1.3;
+    const r = (km * 1000 * scale) / (4 * Math.SQRT2 * ROAD_FACTOR);
     const bearing = Math.random() * 360;
     const g = google.maps.geometry.spherical;
     const o = new google.maps.LatLng(origin.lat, origin.lng);
     const center = g.computeOffset(o, r, bearing);
-    const back = bearing + 180;                     // centerから見たスタートの方角
-    const dir = Math.random() < 0.5 ? 1 : -1;       // 時計回り or 反時計回り
+    const back = bearing + 180;
+    const dir = Math.random() < 0.5 ? 1 : -1;
     return [1, 2, 3].map((i) => {
       const p = g.computeOffset(center, r, back + dir * 90 * i);
       return { lat: p.lat(), lng: p.lng() };
@@ -285,9 +338,9 @@
 
   function clearRoute() {
     if (routeLine) routeLine.setMap(null);
-    wpMarkers.forEach((m) => (m.map = null));
-    wpMarkers = [];
+    routePath = [];
     $("result").classList.remove("show");
+    stopWalk();
   }
 
   async function makeRoute() {
@@ -298,7 +351,6 @@
     try {
       let wps = makeWaypoints(start, targetKm);
       let route = await computeRoute(start, wps);
-      // 目標と25%以上ずれたら、大きさを補正して1回だけやり直す
       const ratio = route.distanceMeters / (targetKm * 1000);
       if (ratio < 0.75 || ratio > 1.25) {
         const wps2 = makeWaypoints(start, targetKm, 1 / ratio);
@@ -318,17 +370,15 @@
 
   function drawRoute(route, wps) {
     clearRoute();
-    const path = google.maps.geometry.encoding.decodePath(route.polyline.encodedPolyline);
-    routeLine = new google.maps.Polyline({ path, map, strokeColor: "#2f7d5b", strokeWeight: 6, strokeOpacity: 0.85 });
+    routePath = google.maps.geometry.encoding.decodePath(route.polyline.encodedPolyline);
+    routeLine = new google.maps.Polyline({ path: routePath, map, strokeColor: "#2f7d5b", strokeWeight: 6, strokeOpacity: 0.85 });
     const bounds = new google.maps.LatLngBounds();
-    path.forEach((p) => bounds.extend(p));
+    routePath.forEach((p) => bounds.extend(p));
     map.fitBounds(bounds, 40);
 
-    lastWaypoints = wps;
     const km = (route.distanceMeters / 1000).toFixed(1);
     const min = Math.round(parseInt(route.duration, 10) / 60);
     $("stats").textContent = `約 ${km} km ・ 徒歩 約 ${min} 分`;
-
     const fmt = (p) => `${p.lat.toFixed(6)},${p.lng.toFixed(6)}`;
     $("openGmaps").href = "https://www.google.com/maps/dir/?api=1&travelmode=walking" +
       "&origin=" + fmt(start) + "&destination=" + fmt(start) +
@@ -339,8 +389,205 @@
   $("makeRoute").onclick = makeRoute;
   $("reroll").onclick = makeRoute;
 
+  // ---------- AIお散歩 ----------
+  // ルート上に等間隔で地点を置き、その先の方向を向く
+  function samplePath(path, count) {
+    const g = google.maps.geometry.spherical;
+    const total = g.computeLength(path);
+    const step = total / count;
+    const out = [];
+    let seg = 0, segStartDist = 0;
+    for (let k = 0; k < count; k++) {
+      const d = Math.min(step * k + 20, total - 1);
+      while (seg < path.length - 2 && segStartDist + g.computeDistanceBetween(path[seg], path[seg + 1]) < d) {
+        segStartDist += g.computeDistanceBetween(path[seg], path[seg + 1]);
+        seg++;
+      }
+      const a = path[seg], b = path[seg + 1];
+      const segLen = g.computeDistanceBetween(a, b) || 1;
+      const pos = g.interpolate(a, b, Math.min(1, (d - segStartDist) / segLen));
+      out.push({ pos, heading: g.computeHeading(a, b) });
+    }
+    return out;
+  }
+
+  async function findPano(pos) {
+    try {
+      const { data } = await svService.getPanorama({
+        location: pos, radius: 50, source: google.maps.StreetViewSource.OUTDOOR,
+      });
+      return data.location;
+    } catch { return null; }
+  }
+
+  async function fetchStreetImage(panoId, heading) {
+    const url = "https://maps.googleapis.com/maps/api/streetview?size=640x400&fov=90&pitch=0" +
+      "&pano=" + encodeURIComponent(panoId) + "&heading=" + Math.round(heading) +
+      "&key=" + encodeURIComponent(apiKey);
+    let res;
+    try { res = await fetch(url); }
+    catch { throw new Error("ストリートビュー画像を取得できませんでした。Street View Static APIが有効か確認してください。"); }
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error("ストリートビュー画像の取得に失敗（" + res.status + "）。Street View Static APIを有効にしてください。" + t.slice(0, 120));
+    }
+    const blob = await res.blob();
+    const base64 = await new Promise((ok, ng) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(",")[1]);
+      r.onerror = ng;
+      r.readAsDataURL(blob);
+    });
+    return { blobUrl: URL.createObjectURL(blob), base64, mime: blob.type || "image/jpeg" };
+  }
+
+  async function askGemini(stops, km) {
+    const parts = [{
+      text:
+`あなたは、知らない街をのんびり散歩するのが好きなAIです。
+これから約${km}kmのお散歩で見た景色の写真を${stops.length}枚、歩いた順に渡します。
+写真ごとに、その場で見て感じたことを一人称で1〜2文、やわらかい日本語で書いてください。
+写真に写っていないものを想像で足さないでください。
+季節・天気・人の気配・お店・植物・道の雰囲気など、写真から分かることに注目してください。
+最後に、お散歩全体の感想を2〜3文でまとめてください。
+
+次のJSONだけを返してください。
+{"title": "お散歩のタイトル（15文字以内）", "entries": ["1枚目の感想", "2枚目の感想", ...], "summary": "全体の感想"}
+entriesは写真と同じ${stops.length}個にしてください。`,
+    }];
+    stops.forEach((s, i) => {
+      parts.push({ text: `写真${i + 1}` });
+      parts.push({ inline_data: { mime_type: s.img.mime, data: s.img.base64 } });
+    });
+
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+      encodeURIComponent(geminiModel) + ":generateContent";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.9 },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const m = data?.error?.message || res.statusText;
+      if (res.status === 429) throw new Error("Geminiの無料枠の上限に達しました。少し時間をおいて試してください。（" + m + "）");
+      if (res.status === 404) throw new Error("Geminiのモデル「" + geminiModel + "」が見つかりません。設定でモデル名を変えてみてください。（" + m + "）");
+      if (res.status === 400 || res.status === 403) throw new Error("Gemini APIキーを確認してください。（" + m + "）");
+      throw new Error("Geminiの呼び出しに失敗: " + m);
+    }
+    const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    try {
+      const json = JSON.parse(text.replace(/^```json\s*|```$/g, "").trim());
+      return {
+        title: json.title || "AIのお散歩",
+        entries: Array.isArray(json.entries) ? json.entries : [],
+        summary: json.summary || "",
+      };
+    } catch {
+      throw new Error("Geminiの返事をうまく読み取れませんでした。もう一度試してください。");
+    }
+  }
+
+  let walk = null; // { stops, idx, timer, playing }
+
+  async function startAiWalk() {
+    if (!routePath.length) return;
+    if (!geminiKey) { openSetup("AIお散歩にはGemini APIキーが必要です。"); return; }
+    stopWalk();
+    const btn = $("aiWalk");
+    btn.disabled = true;
+    try {
+      const km = google.maps.geometry.spherical.computeLength(routePath) / 1000;
+      const count = Math.max(6, Math.min(12, Math.round(km * 4)));
+      const samples = samplePath(routePath, count);
+
+      btn.textContent = "歩く道を下見中…";
+      const stops = [];
+      const seen = new Set();
+      for (const s of samples) {
+        const loc = await findPano(s.pos);
+        if (!loc || seen.has(loc.pano)) continue;
+        seen.add(loc.pano);
+        stops.push({ ...s, pano: loc.pano, panoPos: loc.latLng });
+      }
+      if (stops.length < 2) throw new Error("このルートにはストリートビューがほとんどありませんでした。別のルートで試してください。");
+
+      for (let i = 0; i < stops.length; i++) {
+        btn.textContent = `景色を見ています… (${i + 1}/${stops.length})`;
+        stops[i].img = await fetchStreetImage(stops[i].pano, stops[i].heading);
+      }
+
+      btn.textContent = "感想を書いています…";
+      const diary = await askGemini(stops, km.toFixed(1));
+      stops.forEach((s, i) => (s.text = diary.entries[i] || "……（ここでは言葉が出てこなかったみたい）"));
+
+      $("walkTitle").textContent = diary.title;
+      $("walkSummary").textContent = diary.summary;
+      $("walkSummary").classList.remove("show");
+      $("walk").classList.add("show");
+      walk = { stops, idx: 0, timer: null, playing: true };
+      showStop(0);
+      schedule();
+      hideMsg();
+      $("walk").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      showMsg(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "AIにお散歩してもらう";
+    }
+  }
+
+  function showStop(i) {
+    const s = walk.stops[i];
+    walk.idx = i;
+    $("walkImg").src = s.img.blobUrl;
+    $("walkImg").alt = "地点" + (i + 1) + "のストリートビュー";
+    $("walkText").textContent = s.text;
+    $("walkCount").textContent = `${i + 1} / ${walk.stops.length} 地点目`;
+    $("walkPrev").disabled = i === 0;
+    $("walkNext").disabled = i === walk.stops.length - 1;
+    if (i === walk.stops.length - 1) $("walkSummary").classList.add("show");
+    walkerMarker.position = s.panoPos || s.pos;
+    walkerMarker.map = map;
+    map.panTo(s.panoPos || s.pos);
+  }
+
+  function schedule() {
+    clearTimeout(walk.timer);
+    $("walkPlay").textContent = walk.playing ? "一時停止" : "再生";
+    if (!walk.playing) return;
+    walk.timer = setTimeout(() => {
+      if (walk.idx < walk.stops.length - 1) { showStop(walk.idx + 1); schedule(); }
+      else { walk.playing = false; $("walkPlay").textContent = "最初から"; }
+    }, 6000);
+  }
+
+  function stopWalk() {
+    if (walk) {
+      clearTimeout(walk.timer);
+      walk.stops.forEach((s) => s.img && URL.revokeObjectURL(s.img.blobUrl));
+    }
+    walk = null;
+    $("walk").classList.remove("show");
+    if (walkerMarker) walkerMarker.map = null;
+  }
+
+  $("aiWalk").onclick = startAiWalk;
+  $("walkPrev").onclick = () => { if (!walk) return; walk.playing = false; showStop(Math.max(0, walk.idx - 1)); schedule(); };
+  $("walkNext").onclick = () => { if (!walk) return; walk.playing = false; showStop(Math.min(walk.stops.length - 1, walk.idx + 1)); schedule(); };
+  $("walkPlay").onclick = () => {
+    if (!walk) return;
+    if (!walk.playing && walk.idx === walk.stops.length - 1) showStop(0);
+    walk.playing = !walk.playing;
+    schedule();
+  };
+
   // ---------- 起動 ----------
-  const saved = store.get();
+  const saved = store.get(K_MAPS);
   if (saved) { apiKey = saved; loadMaps(saved); }
   else openSetup();
 })();
