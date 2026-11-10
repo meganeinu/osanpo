@@ -80,6 +80,9 @@
   #walkImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: #e9e8e2; display: block; }
   #walkText { font-size: 15px; line-height: 1.8; margin: 0; min-height: 3.6em; }
   #walkCount { font-size: 12px; color: var(--sub); }
+  #walkFocus { margin: 0; font-size: 14px; font-weight: 600; padding: 4px 10px; border-left: 3px solid var(--accent);
+    background: var(--bg); border-radius: 4px; overflow-wrap: anywhere; }
+  #walkFocus:empty { display: none; }
   #walkSummary { font-size: 15px; line-height: 1.8; margin: 0; padding: 12px 14px;
     background: var(--bg); border-radius: 10px; }
   .walker { font-size: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
@@ -180,6 +183,7 @@
   <div id="walkStep" aria-live="polite">
     <img id="walkImg" alt="">
     <div id="walkCount"></div>
+    <p id="walkFocus"></p>
     <p id="walkText"></p>
     <div class="row">
       <button id="walkPrev" class="secondary" type="button" style="flex:1">◀ 前</button>
@@ -613,16 +617,19 @@
   async function askGemini(stops, km, onStatus) {
     const parts = [{
       text:
-`あなたは、知らない街をのんびり散歩するのが好きなAIです。
-これから約${km}kmのお散歩で見た景色の写真を${stops.length}枚、歩いた順に渡します。
-写真ごとに、その場で見て感じたことを一人称で1〜2文、やわらかい日本語で書いてください。
-写真に写っていないものを想像で足さないでください。
-季節・天気・人の気配・お店・植物・道の雰囲気など、写真から分かることに注目してください。
-最後に、お散歩全体の感想を2〜3文でまとめてください。
+`あなたは、知らない街を歩くのが好きなAIです。これから約${km}kmのお散歩で、歩きながら見た景色の写真を${stops.length}枚、歩いた順に渡します。
+
+あなたの仕事は、景色の感想を書くことではありません。歩いていて「あ、これ気になる」と足が止まったものだけを、一緒に暮らしている人に話すように報告することです。
+- 目がいくもの：道ばたに置かれたもの・落ちているもの（植木鉢、自転車、傘、ベンチ）／文字（手書きの看板、張り紙、店名、標識）／生き物（猫、鳥、犬）／生活の痕跡（洗濯物、郵便受け、閉まったシャッター）／ちょっと変な形や色の建物や道／ほかの写真で見たものと同じものがまた出てきたとき
+- 書き方：何が、写真のどこにあるか（左の電柱の下、奥の角、など）、なぜ気になったか、あなたなりの疑問か想像をひとつ。一人称で、やわらかい日本語で2〜3文。
+- 書かないこと：天気・季節・街並みの雰囲気のまとめ、「のどか」「落ち着いた」「素敵」のような雰囲気だけの言葉、観光案内のような説明、写真に写っていないものの断定。
+- 報告するのは、本当に気になったものがある写真だけ。${Math.min(5, stops.length)}枚以内に絞ってください。何もなければ0枚でもかまいません。
+
+最後に、このお散歩でいちばん話したかったことを1〜2文で書いてください（全体のまとめではなく、ひとつに絞る）。
 
 次のJSONだけを返してください。
-{"title": "お散歩のタイトル（15文字以内）", "entries": ["1枚目の感想", "2枚目の感想", ...], "summary": "全体の感想"}
-entriesは写真と同じ${stops.length}個にしてください。`,
+{"title": "お散歩のタイトル（15文字以内。いちばん気になったものにちなむ）", "finds": [{"photo": 写真の番号, "focus": "気になったもの（15文字以内）", "text": "報告"}, ...], "summary": "いちばん話したかったこと"}
+findsは写真の番号順に並べてください。`,
     }];
     stops.forEach((s, i) => {
       parts.push({ text: `写真${i + 1}` });
@@ -665,11 +672,12 @@ entriesは写真と同じ${stops.length}個にしてください。`,
     const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
     try {
       const json = JSON.parse(text.replace(/^```json\s*|```$/g, "").trim());
-      return {
-        title: json.title || "AIのお散歩",
-        entries: Array.isArray(json.entries) ? json.entries : [],
-        summary: json.summary || "",
-      };
+      const seenPhoto = new Set();
+      const finds = (Array.isArray(json.finds) ? json.finds : [])
+        .map((f) => ({ idx: Number(f?.photo) - 1, focus: String(f?.focus || ""), text: String(f?.text || "") }))
+        .filter((f) => Number.isInteger(f.idx) && f.idx >= 0 && f.idx < stops.length && f.text && !seenPhoto.has(f.idx) && seenPhoto.add(f.idx))
+        .sort((a, b) => a.idx - b.idx);
+      return { title: json.title || "AIのお散歩", finds, summary: json.summary || "" };
     } catch {
       throw new Error("Geminiの返事をうまく読み取れませんでした。もう一度試してください。");
     }
@@ -710,14 +718,18 @@ entriesは写真と同じ${stops.length}個にしてください。`,
       }
 
       const diary = await askGemini(stops, km.toFixed(1), (t) => (btn.textContent = t));
-      stops.forEach((s, i) => (s.text = diary.entries[i] || "……（ここでは言葉が出てこなかったみたい）"));
+      // 気になったと報告された地点だけで歩く
+      const picked = diary.finds.map((f) => ({ ...stops[f.idx], focus: f.focus, text: f.text }));
+      if (!picked.length) {
+        picked.push({ ...stops[stops.length - 1], focus: "", text: "今日はとくに足が止まるものがなかったみたい。" });
+      }
 
       $("walkTitle").textContent = diary.title;
-      $("walkSummary").textContent = diary.summary || "楽しいお散歩でした。";
-      $("doneStats").textContent = `約 ${km.toFixed(1)} km ・ ${stops.length} か所で立ち止まりました`;
-      $("walkProgress").innerHTML = stops.map(() => "<span></span>").join("");
+      $("walkSummary").textContent = diary.summary || "今日はとくに話したいことはなかったみたい。";
+      $("doneStats").textContent = `約 ${km.toFixed(1)} km ・ ${stops.length} か所を見て、${diary.finds.length} か所で足が止まりました`;
+      $("walkProgress").innerHTML = picked.map(() => "<span></span>").join("");
       $("doneThumbs").innerHTML = "";
-      stops.forEach((s, i) => {
+      picked.forEach((s, i) => {
         const b = document.createElement("button");
         b.type = "button";
         b.setAttribute("aria-label", (i + 1) + "か所目を見る");
@@ -728,7 +740,7 @@ entriesは写真と同じ${stops.length}個にしてください。`,
         $("doneThumbs").appendChild(b);
       });
       $("walk").classList.add("show");
-      walk = { stops, idx: 0, timer: null, playing: true };
+      walk = { stops: picked, idx: 0, timer: null, playing: true };
       showStop(0);
       schedule();
       hideMsg();
@@ -754,6 +766,7 @@ entriesは写真と同じ${stops.length}個にしてください。`,
     $("walkBadge").classList.remove("done");
     $("walkImg").src = s.img.blobUrl;
     $("walkImg").alt = (i + 1) + "か所目のストリートビュー";
+    $("walkFocus").textContent = s.focus ? "気になったもの：" + s.focus : "";
     $("walkText").textContent = s.text;
     $("walkCount").textContent = `${i + 1} / ${n} か所目`;
     $("walkPrev").disabled = i === 0;
