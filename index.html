@@ -21,7 +21,20 @@
   #panel { padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line);
     display: grid; gap: 10px; }
   label.small { font-size: 12px; color: var(--sub); display: block; margin-bottom: 4px; }
-  #searchBox gmp-place-autocomplete { width: 100%; }
+  .search { position: relative; display: flex; gap: 8px; margin: 0; }
+  #searchInput { flex: 1; min-width: 0; padding: 10px 12px; font-size: 16px; border: 1px solid var(--line);
+    border-radius: 10px; background: var(--card); color: var(--ink); }
+  #searchInput:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .search-btn { border: none; background: var(--accent); color: var(--accent-ink); border-radius: 10px;
+    padding: 0 16px; font-size: 15px; font-weight: 600; }
+  .search-btn:disabled { opacity: .5; }
+  #suggestList { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; margin: 0; padding: 4px 0;
+    list-style: none; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.12); display: none; max-height: 50vh; overflow: auto; }
+  #suggestList.show { display: block; }
+  #suggestList li { padding: 10px 12px; font-size: 14px; cursor: pointer; }
+  #suggestList li small { display: block; color: var(--sub); font-size: 12px; margin-top: 2px; }
+  #suggestList li[aria-selected="true"], #suggestList li:hover { background: #e8f3ed; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px;
     padding: 6px 12px; font-size: 14px; color: var(--ink); }
@@ -105,7 +118,12 @@
 <div id="panel">
   <div>
     <label class="small">スタート地点</label>
-    <div id="searchBox"></div>
+    <form id="searchForm" class="search" autocomplete="off" role="search">
+      <input id="searchInput" type="search" enterkeyhint="search" placeholder="駅名・住所・施設名で検索"
+        aria-label="スタート地点を検索" aria-autocomplete="list" aria-controls="suggestList" aria-expanded="false">
+      <button id="searchBtn" class="search-btn" type="submit">検索</button>
+      <ul id="suggestList" role="listbox"></ul>
+    </form>
     <div class="row" style="margin-top:8px">
       <button id="useHere" class="chip" type="button">現在地を使う</button>
       <span id="startLabel">地図をタップしても指定できます</span>
@@ -252,19 +270,127 @@
     w.className = "walker"; w.textContent = "🚶";
     walkerMarker = new AdvancedMarkerElement({ map: null, content: w, title: "おさんぽ中" });
 
-    const ac = new placesLib.PlaceAutocompleteElement({ includedRegionCodes: ["jp"] });
-    ac.placeholder = "駅名・住所・施設名で検索";
-    $("searchBox").appendChild(ac);
-    const onPlace = async (place) => {
-      await place.fetchFields({ fields: ["displayName", "location"] });
-      if (!place.location) { showMsg("その場所の位置が取れませんでした"); return; }
-      setStart({ lat: place.location.lat(), lng: place.location.lng() }, place.displayName);
-    };
-    ac.addEventListener("gmp-select", (e) => onPlace(e.placePrediction.toPlace()).catch(err => showMsg(err.message)));
-    ac.addEventListener("gmp-placeselect", (e) => e.place && onPlace(e.place).catch(err => showMsg(err.message)));
+    setupSearch(placesLib);
 
     map.addListener("click", (e) => setStart({ lat: e.latLng.lat(), lng: e.latLng.lng() }, "地図で指定した地点"));
     hideMsg();
+  }
+
+  // ---------- スタート地点の検索 ----------
+  // 候補をタップ、または Enter / 検索ボタンでいちばん近い結果に決める
+  function setupSearch(placesLib) {
+    const { AutocompleteSuggestion, AutocompleteSessionToken, Place } = placesLib;
+    const input = $("searchInput"), list = $("suggestList"), btn = $("searchBtn");
+    let token = new AutocompleteSessionToken();
+    let items = [];      // { prediction, main, sub }
+    let active = -1;
+    let timer = null, reqId = 0;
+
+    const closeList = () => {
+      list.classList.remove("show"); list.innerHTML = "";
+      input.setAttribute("aria-expanded", "false");
+      items = []; active = -1;
+    };
+    const render = () => {
+      list.innerHTML = "";
+      items.forEach((it, i) => {
+        const li = document.createElement("li");
+        li.setAttribute("role", "option");
+        li.setAttribute("aria-selected", String(i === active));
+        li.textContent = it.main;
+        if (it.sub) { const s = document.createElement("small"); s.textContent = it.sub; li.appendChild(s); }
+        // pointerdownでinputのblurより先に拾う
+        li.addEventListener("pointerdown", (e) => { e.preventDefault(); choose(it); });
+        list.appendChild(li);
+      });
+      const open = items.length > 0;
+      list.classList.toggle("show", open);
+      input.setAttribute("aria-expanded", String(open));
+    };
+
+    async function fetchSuggestions(q) {
+      const my = ++reqId;
+      try {
+        const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: q, sessionToken: token, language: "ja", region: "jp",
+          includedRegionCodes: ["jp"], locationBias: map.getCenter(),
+        });
+        if (my !== reqId) return; // 古い結果は捨てる
+        items = suggestions.filter((s) => s.placePrediction).slice(0, 5).map((s) => ({
+          prediction: s.placePrediction,
+          main: s.placePrediction.mainText?.toString() || s.placePrediction.text.toString(),
+          sub: s.placePrediction.secondaryText?.toString() || "",
+        }));
+        active = -1;
+        render();
+      } catch (e) {
+        if (my === reqId) showMsg("候補を取得できませんでした。Places API (New) が有効か確認してください。（" + e.message + "）");
+      }
+    }
+
+    async function choose(it) {
+      closeList();
+      input.value = it.main;
+      try {
+        const place = it.prediction.toPlace();
+        await place.fetchFields({ fields: ["displayName", "location"] });
+        token = new AutocompleteSessionToken();
+        if (!place.location) throw new Error("その場所の位置が取れませんでした");
+        setStart({ lat: place.location.lat(), lng: place.location.lng() }, place.displayName || it.main);
+        map.setZoom(15);
+        input.blur();
+      } catch (e) { showMsg(e.message); }
+    }
+
+    async function searchText(q) {
+      closeList();
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const { places } = await Place.searchByText({
+          textQuery: q, fields: ["displayName", "location"],
+          language: "ja", region: "jp", maxResultCount: 1, locationBias: map.getCenter(),
+        });
+        if (!places?.length) { showMsg("「" + q + "」が見つかりませんでした。別の言葉で試してください。"); return; }
+        const p = places[0];
+        setStart({ lat: p.location.lat(), lng: p.location.lng() }, p.displayName || q);
+        map.setZoom(15);
+        input.blur();
+      } catch (e) {
+        showMsg("検索に失敗しました。Places API (New) が有効か確認してください。（" + e.message + "）");
+      } finally {
+        btn.disabled = false; btn.textContent = "検索";
+      }
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { reqId++; closeList(); return; }
+      timer = setTimeout(() => fetchSuggestions(q), 250);
+    });
+    // 日本語変換を確定するEnterで検索が走らないようにする（Safari対策込み）
+    let composing = false;
+    input.addEventListener("compositionstart", () => (composing = true));
+    input.addEventListener("compositionend", () => setTimeout(() => (composing = false), 30));
+    input.addEventListener("keydown", (e) => {
+      if (e.isComposing || e.keyCode === 229 || composing) {
+        if (e.key === "Enter") e.preventDefault();
+        return;
+      }
+      if (!items.length) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); active = (active + 1) % items.length; render(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = (active - 1 + items.length) % items.length; render(); }
+      else if (e.key === "Escape") { closeList(); }
+    });
+    input.addEventListener("blur", () => setTimeout(closeList, 150));
+    $("searchForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (!q) return;
+      clearTimeout(timer); reqId++;
+      if (active >= 0 && items[active]) choose(items[active]);
+      else searchText(q);
+    });
   }
 
   function setStart(pos, label) {
