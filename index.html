@@ -87,6 +87,26 @@
     background: var(--bg); border-radius: 10px; }
   .walker { font-size: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
 
+  /* ネコのおさんぽ */
+  #cat { display: none; padding: 12px 16px 24px; background: var(--card); border-top: 1px solid var(--line); gap: 10px; }
+  #cat.show { display: grid; }
+  #catTitle { font-size: 16px; font-weight: 700; margin: 0; }
+  #catMeta, .cat-note { font-size: 12px; color: var(--sub); margin: 0; line-height: 1.6; }
+  #catImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: #e9e8e2; display: block; }
+  #catImg:not([src]) { display: none; }
+  #catFocus { margin: 0; font-size: 14px; font-weight: 600; padding: 4px 10px; border-left: 3px solid #d9822b;
+    background: var(--bg); border-radius: 4px; }
+  #catFocus:empty { display: none; }
+  #catNow { font-size: 15px; line-height: 1.8; margin: 0; }
+  #cat h3 { font-size: 14px; margin: 8px 0 0; }
+  #catLog { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  #catLog li { display: grid; grid-template-columns: 104px 1fr; gap: 10px; cursor: pointer; }
+  #catLog img { width: 104px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; background: #e9e8e2; }
+  #catLog .t { font-size: 12px; color: var(--sub); }
+  #catLog .f { font-size: 14px; font-weight: 600; }
+  #catLog .x { font-size: 14px; line-height: 1.7; margin: 2px 0 0; }
+  #catLogEmpty { font-size: 13px; color: var(--sub); margin: 0; }
+
   /* 設定画面 */
   #setup { position: fixed; inset: 0; background: var(--bg); display: none; padding: 24px 20px;
     overflow: auto; z-index: 10; }
@@ -113,7 +133,7 @@
       <li>Maps JavaScript API</li>
       <li>Places API (New)</li>
       <li>Routes API</li>
-      <li>Street View Static API（AIお散歩で使用）</li>
+      <li>Street View Static API（AIお散歩・ネコのおさんぽで使用）</li>
     </ol>
     <input id="keyInput" type="text" placeholder="AIza..." autocomplete="off" spellcheck="false">
 
@@ -159,6 +179,7 @@
     </div>
   </div>
   <button id="makeRoute" class="primary" disabled>おまかせでルートを作る</button>
+  <button id="releaseCat" class="secondary" type="button" disabled>🐈 ここをおうちにしてネコを放す</button>
 </div>
 
 <div id="msg"></div>
@@ -205,6 +226,26 @@
       <button id="walkAnother" class="secondary" type="button" style="flex:1">別のルートで歩く</button>
     </div>
   </div>
+</section>
+
+<section id="cat">
+  <div class="walk-head">
+    <p id="catTitle">ネコのおさんぽ</p>
+    <span id="catBadge" class="badge"></span>
+  </div>
+  <p id="catMeta"></p>
+  <img id="catImg" alt="ネコがいま見ている景色">
+  <p id="catFocus"></p>
+  <p id="catNow" aria-live="polite"></p>
+  <div class="row">
+    <button id="catLook" class="secondary" type="button" style="flex:1">いま見てもらう</button>
+    <button id="catFind" class="secondary" type="button" style="flex:1">ネコの居場所へ</button>
+  </div>
+  <h3>ネコからの報告</h3>
+  <p id="catLogEmpty">まだ報告はありません。</p>
+  <ul id="catLog"></ul>
+  <p class="cat-note">ページを閉じている間もネコは少しずつ歩きます。写真を撮って報告するのは、このページを開いている間だけです。</p>
+  <button id="catEnd" class="secondary" type="button">ネコのおさんぽをやめる</button>
 </section>
 
 <script>
@@ -289,6 +330,7 @@
   // ---------- 地図とルート ----------
   let map, startMarker, walkerMarker, routeLine, AdvMarker, svService;
   let start = null;
+  let startName = "";
   let targetKm = 2;
   let routePath = [];   // google.maps.LatLng[]
 
@@ -315,6 +357,7 @@
 
     map.addListener("click", (e) => setStart({ lat: e.latLng.lat(), lng: e.latLng.lng() }, "地図で指定した地点"));
     hideMsg();
+    restoreCat();
   }
 
   // ---------- スタート地点の検索 ----------
@@ -439,8 +482,10 @@
     startMarker.position = pos;
     startMarker.map = map;
     map.panTo(pos);
-    $("startLabel").textContent = "スタート: " + (label || "指定地点");
+    startName = label || "指定地点";
+    $("startLabel").textContent = "スタート: " + startName;
     $("makeRoute").disabled = false;
+    $("releaseCat").disabled = false;
     clearRoute();
   }
 
@@ -591,8 +636,8 @@
     } catch { return null; }
   }
 
-  async function fetchStreetImage(panoId, heading) {
-    const url = "https://maps.googleapis.com/maps/api/streetview?size=640x400&fov=90&pitch=0" +
+  async function fetchStreetImage(panoId, heading, pitch = 0) {
+    const url = "https://maps.googleapis.com/maps/api/streetview?size=640x400&fov=90&pitch=" + pitch +
       "&pano=" + encodeURIComponent(panoId) + "&heading=" + Math.round(heading) +
       "&key=" + encodeURIComponent(apiKey);
     let res;
@@ -636,6 +681,22 @@ findsは写真の番号順に並べてください。`,
       parts.push({ inline_data: { mime_type: s.img.mime, data: s.img.base64 } });
     });
 
+    const text = await callGemini(parts, "感想を書いています", onStatus);
+    try {
+      const json = JSON.parse(text.replace(/^```json\s*|```$/g, "").trim());
+      const seenPhoto = new Set();
+      const finds = (Array.isArray(json.finds) ? json.finds : [])
+        .map((f) => ({ idx: Number(f?.photo) - 1, focus: String(f?.focus || ""), text: String(f?.text || "") }))
+        .filter((f) => Number.isInteger(f.idx) && f.idx >= 0 && f.idx < stops.length && f.text && !seenPhoto.has(f.idx) && seenPhoto.add(f.idx))
+        .sort((a, b) => a.idx - b.idx);
+      return { title: json.title || "AIのお散歩", finds, summary: json.summary || "" };
+    } catch {
+      throw new Error("Geminiの返事をうまく読み取れませんでした。もう一度試してください。");
+    }
+  }
+
+  // Geminiを呼んで、返事のテキストを返す（混雑時の再試行・モデル切り替えつき）
+  async function callGemini(parts, label, onStatus) {
     const body = JSON.stringify({
       contents: [{ role: "user", parts }],
       generationConfig: { responseMimeType: "application/json", temperature: 0.9 },
@@ -647,7 +708,7 @@ findsは写真の番号順に並べてください。`,
     outer:
     for (const model of models) {
       for (let attempt = 0; attempt < 3; attempt++) {
-        onStatus?.(attempt === 0 ? `感想を書いています…（${model}）` : `混んでいるので待っています…（${model}・${attempt + 1}回目）`);
+        onStatus?.(attempt === 0 ? `${label}…（${model}）` : `混んでいるので待っています…（${model}・${attempt + 1}回目）`);
         const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" +
           encodeURIComponent(model) + ":generateContent", {
           method: "POST",
@@ -669,18 +730,7 @@ findsは写真の番号順に並べてください。`,
     if (!data?.candidates) {
       throw new Error("Geminiが混み合っていて返事がもらえませんでした。少し時間をおいて、もう一度押してください（集めた景色はそのまま使います）。（" + lastErr + "）");
     }
-    const text = data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
-    try {
-      const json = JSON.parse(text.replace(/^```json\s*|```$/g, "").trim());
-      const seenPhoto = new Set();
-      const finds = (Array.isArray(json.finds) ? json.finds : [])
-        .map((f) => ({ idx: Number(f?.photo) - 1, focus: String(f?.focus || ""), text: String(f?.text || "") }))
-        .filter((f) => Number.isInteger(f.idx) && f.idx >= 0 && f.idx < stops.length && f.text && !seenPhoto.has(f.idx) && seenPhoto.add(f.idx))
-        .sort((a, b) => a.idx - b.idx);
-      return { title: json.title || "AIのお散歩", finds, summary: json.summary || "" };
-    } catch {
-      throw new Error("Geminiの返事をうまく読み取れませんでした。もう一度試してください。");
-    }
+    return data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
   }
 
   let walk = null; // { stops, idx, timer, playing }
@@ -823,6 +873,332 @@ findsは写真の番号順に並べてください。`,
   $("walkPlay").onclick = () => { if (!walk) return; walk.playing = !walk.playing; schedule(); };
   $("walkReplay").onclick = () => { if (!walk) return; walk.playing = true; showStop(0); schedule(); };
   $("walkAnother").onclick = () => { stopWalk(); window.scrollTo({ top: 0, behavior: "smooth" }); makeRoute(); };
+
+  // ---------- ネコのおさんぽ ----------
+  // 昼のあいだ、ストリートビューの道を人の歩く速さくらいでうろうろして、
+  // 数分おきに目の前の景色を見て、気になったものだけ報告する。
+  const K_CAT = "osanpo_cat";
+  const CAT = {
+    dayStart: 8, dayEnd: 18,   // 歩きまわる時間（時）。夜はおうちで寝る
+    stepSec: 15,               // 1歩（パノラマ1つ分・約10m）にかける秒数
+    restRate: 0.3,             // その場で立ち止まる確率（ネコなので）
+    lookMin: 5,                // 見まわす間隔（分）
+    dailyShots: 120,           // 1日に撮る写真の上限（Street View Static APIの無料枠 月10,000枚に収める）
+    roamM: 800,                // おうちからこれ以上離れたら、おうちの方へ戻る
+    catchupSteps: 60,          // ページを閉じていた間に進める歩数の上限
+    trailMax: 400, logMax: 40,
+  };
+  let cat = null;              // 保存される状態
+  let catMarker = null, catTrail = null, catTimer = null, catBusy = false, catPanoData = null, catImgUrl = null;
+
+  const todayKey = () => new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD
+  const isDaytime = (d = new Date()) => d.getHours() >= CAT.dayStart && d.getHours() < CAT.dayEnd;
+  const angDiff = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const ll = (p) => ({ lat: p.lat, lng: p.lng });
+
+  // from〜to のうち、歩く時間帯にあたる秒数
+  function daytimeSecs(from, to) {
+    let s = 0, t = from;
+    while (t < to) {
+      const d = new Date(t);
+      const a = new Date(d).setHours(CAT.dayStart, 0, 0, 0);
+      const b = new Date(d).setHours(CAT.dayEnd, 0, 0, 0);
+      const lo = Math.max(t, a), hi = Math.min(to, b);
+      if (hi > lo) s += hi - lo;
+      t = new Date(d).setHours(24, 0, 0, 0);
+    }
+    return s / 1000;
+  }
+
+  function saveCat() {
+    if (!cat) { store.del(K_CAT); return; }
+    for (let i = 0; i < 4; i++) {
+      try { localStorage.setItem(K_CAT, JSON.stringify(cat)); return; }
+      catch { cat.log = cat.log.slice(0, Math.floor(cat.log.length / 2)); } // 容量オーバーなら古い報告を減らす
+    }
+  }
+
+  async function panoById(pano) {
+    try { return (await svService.getPanorama({ pano })).data; } catch { return null; }
+  }
+  async function panoNear(pos, radius) {
+    try {
+      return (await svService.getPanorama({ location: pos, radius, source: google.maps.StreetViewSource.OUTDOOR })).data;
+    } catch { return null; }
+  }
+
+  // 日付が変わったら、おうちから出直す
+  function catNewDay() {
+    const today = todayKey();
+    if (cat.day === today) return;
+    cat.day = today;
+    cat.pano = cat.home.pano;
+    cat.pos = ll(cat.home);
+    cat.heading = Math.random() * 360;
+    cat.distM = 0; cat.shots = 0; cat.lastLook = 0; cat.turn = 0;
+    cat.trail = [[cat.pos.lat, cat.pos.lng]];
+    cat.lastTick = new Date().setHours(CAT.dayStart, 0, 0, 0);
+    cat.now = null;
+    catPanoData = null;
+  }
+
+  // 1歩進む。基本はまっすぐ、ときどき気まぐれに曲がり、遠くまで来たらおうちの方へ
+  async function catStep() {
+    if (Math.random() < CAT.restRate) return;
+    const g = google.maps.geometry.spherical;
+    const data = catPanoData?.location?.pano === cat.pano ? catPanoData : await panoById(cat.pano);
+    const links = (data?.links || []).filter((l) => l.pano);
+    if (!links.length) { cat.heading = (cat.heading + 180) % 360; return; }
+    const here = new google.maps.LatLng(cat.pos);
+    const farAway = g.computeDistanceBetween(here, new google.maps.LatLng(ll(cat.home))) > CAT.roamM;
+    let want = cat.heading;
+    if (farAway) want = g.computeHeading(here, new google.maps.LatLng(ll(cat.home)));
+    else if (cat.turn) { want = (cat.heading + cat.turn + 360) % 360; cat.turn = 0; }
+    else if (Math.random() < 0.15) want = Math.random() * 360;
+    // 来た道を引き返すのは、行き止まりかおうちに帰るときだけ
+    const ahead = links.filter((l) => angDiff(l.heading, cat.heading) < 150);
+    const cand = (farAway || !ahead.length) ? links : ahead;
+    const next = cand.reduce((best, l) => (angDiff(l.heading, want) < angDiff(best.heading, want) ? l : best));
+    const nd = await panoById(next.pano);
+    if (!nd) return;
+    const p = nd.location.latLng;
+    cat.distM += g.computeDistanceBetween(here, p);
+    cat.pano = next.pano;
+    cat.pos = { lat: p.lat(), lng: p.lng() };
+    cat.heading = next.heading;
+    cat.trail.push([+cat.pos.lat.toFixed(6), +cat.pos.lng.toFixed(6)]);
+    if (cat.trail.length > CAT.trailMax) cat.trail.shift();
+    catPanoData = nd;
+  }
+
+  function makeThumb(src) {
+    return new Promise((ok) => {
+      const im = new Image();
+      im.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 320; c.height = 200;
+        c.getContext("2d").drawImage(im, 0, 0, 320, 200);
+        ok(c.toDataURL("image/jpeg", 0.7));
+      };
+      im.onerror = () => ok("");
+      im.src = src;
+    });
+  }
+
+  async function askCat(img) {
+    const recent = cat.log.slice(0, 5).map((l) => l.focus).filter(Boolean);
+    const parts = [{
+      text:
+`あなたは、街をうろうろ歩いている1匹のネコです。いま目の前に見えている景色の写真を1枚渡します。
+
+ネコとして「お、なんだあれ」と足が止まるものがあるときだけ、一緒に暮らしている人に報告してください。
+- 目がいくもの：すきま、段ボール、塀の上、日だまり、植木鉢、自転車のかご、ほかの動物（ネコ・鳥・犬）、動きそうなもの、においがしそうな場所、手書きの看板や張り紙、ちょっと変な形や色のもの
+- たいていの景色はふつうです。とくに気にならなければ interesting は false にしてください（3回に1回くらいで十分）。
+${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "。同じものは報告しないでください。\n" : ""}- 書き方：何が写真のどこにあるか（左の塀の下、奥の角、など）と、なぜ気になったか。ネコの一人称「ぼく」で、やわらかい日本語で2文以内。語尾にむりに「にゃ」はつけない。
+- 書かないこと：天気・街並みの雰囲気のまとめ、「のどか」「素敵」のような雰囲気だけの言葉、写真に写っていないものの断定。
+
+次に歩きたい方向も選んでください（気になるものの方へ、なければ気分で）。
+
+次のJSONだけを返してください。
+{"interesting": true または false, "focus": "気になったもの（15文字以内）", "text": "報告", "turn": "left" | "right" | "straight"}`,
+    }, { inline_data: { mime_type: img.mime, data: img.base64 } }];
+    const text = await callGemini(parts, "ネコが見ています", (t) => ($("catNow").textContent = t));
+    try {
+      const j = JSON.parse(text.replace(/^```json\s*|```$/g, "").trim());
+      return {
+        interesting: j.interesting === true && !!j.text,
+        focus: String(j.focus || ""), text: String(j.text || ""),
+        turn: j.turn === "left" ? -90 : j.turn === "right" ? 90 : 0,
+      };
+    } catch {
+      return { interesting: false, focus: "", text: "", turn: 0 };
+    }
+  }
+
+  // 目の前の景色を見て、気になったら報告に残す
+  async function catLook(manual = false) {
+    if (cat.shots >= CAT.dailyShots) {
+      if (manual) showMsg(`今日の写真は上限（${CAT.dailyShots}枚）に達しました。また明日。`, "info");
+      return;
+    }
+    if (!geminiKey) { openSetup("ネコのおさんぽにはGemini APIキーが必要です。"); return; }
+    cat.lastLook = Date.now();
+    cat.shots++;
+    saveCat();
+    $("catNow").textContent = "きょろきょろ…";
+    $("catFocus").textContent = "";
+    const img = await fetchStreetImage(cat.pano, cat.heading, -8); // ネコ目線なので少し下向き
+    if (catImgUrl) URL.revokeObjectURL(catImgUrl);
+    catImgUrl = img.blobUrl;
+    $("catImg").src = img.blobUrl;
+    const r = await askCat(img);
+    cat.turn = r.turn;
+    if (r.interesting) {
+      cat.log.unshift({ t: Date.now(), focus: r.focus, text: r.text, pos: ll(cat.pos), thumb: await makeThumb(img.blobUrl) });
+      cat.log = cat.log.slice(0, CAT.logMax);
+    }
+    cat.now = r.interesting ? { focus: r.focus, text: r.text } : { focus: "", text: "とくに足が止まるものはなかったみたい。" };
+    saveCat();
+  }
+
+  async function catTick() {
+    if (!cat || catBusy || !svService) return;
+    catBusy = true;
+    renderCat();
+    try {
+      catNewDay();
+      const now = Date.now();
+      const secs = daytimeSecs(cat.lastTick, now);
+      const steps = Math.min(Math.floor(secs / CAT.stepSec), CAT.catchupSteps);
+      cat.lastTick = isDaytime() ? now - (secs % CAT.stepSec) * 1000 : now;
+      if (steps > 3) $("catNow").textContent = "ネコが歩いた道をたどっています…";
+      for (let i = 0; i < steps; i++) await catStep();
+      saveCat();
+      drawCat();
+      if (isDaytime() && !document.hidden && now - cat.lastLook >= CAT.lookMin * 60000) await catLook();
+    } catch (e) {
+      showMsg(e.message);
+    } finally {
+      catBusy = false;
+      renderCat();
+      drawCat();
+    }
+  }
+
+  function drawCat() {
+    if (!map || !cat) return;
+    if (!catMarker) {
+      const el = document.createElement("div");
+      el.className = "walker";
+      catMarker = new AdvMarker({ content: el, title: "ネコ" });
+    }
+    const day = isDaytime();
+    catMarker.content.textContent = day ? "🐈" : "💤";
+    catMarker.position = day ? ll(cat.pos) : ll(cat.home);
+    catMarker.map = map;
+    if (!catTrail) catTrail = new google.maps.Polyline({ strokeColor: "#d9822b", strokeWeight: 4, strokeOpacity: 0.8 });
+    catTrail.setPath(cat.trail.map(([lat, lng]) => ({ lat, lng })));
+    catTrail.setMap(map);
+  }
+
+  function fmtTime(t) {
+    const d = new Date(t);
+    const hm = d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString("sv-SE") === todayKey() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
+  }
+
+  let renderedLogKey = "";
+  function renderCat() {
+    if (!cat) { $("cat").classList.remove("show"); return; }
+    $("cat").classList.add("show");
+    const day = isDaytime();
+    $("catBadge").textContent = day ? "🐈 おさんぽ中" : "💤 おうちで寝てる";
+    $("catBadge").classList.toggle("done", !day);
+    const km = ((cat.distM || 0) / 1000).toFixed(1);
+    let meta = `おうち：${cat.home.label} ・ 今日 ${km} km ・ 写真 ${cat.shots || 0}/${CAT.dailyShots} 枚`;
+    if (day) {
+      const left = Math.max(0, Math.ceil((cat.lastLook + CAT.lookMin * 60000 - Date.now()) / 60000));
+      meta += ` ・ 次に見まわすまで 約${left}分`;
+    } else meta += ` ・ ${CAT.dayStart}時〜${CAT.dayEnd}時に歩きます`;
+    $("catMeta").textContent = meta;
+    if (!catBusy) {
+      $("catFocus").textContent = cat.now?.focus ? "気になったもの：" + cat.now.focus : "";
+      $("catNow").textContent = cat.now?.text || (day ? "" : "いまはおうちで寝ています。");
+    }
+    $("catLook").disabled = catBusy;
+
+    const key = cat.log.map((l) => l.t).join(",");
+    if (key === renderedLogKey) return;
+    renderedLogKey = key;
+    const ul = $("catLog");
+    ul.innerHTML = "";
+    $("catLogEmpty").style.display = cat.log.length ? "none" : "";
+    cat.log.forEach((l) => {
+      const li = document.createElement("li");
+      const img = document.createElement("img");
+      if (l.thumb) img.src = l.thumb;
+      img.alt = "";
+      const box = document.createElement("div");
+      const t = document.createElement("div"); t.className = "t"; t.textContent = fmtTime(l.t);
+      const f = document.createElement("div"); f.className = "f"; f.textContent = l.focus;
+      const x = document.createElement("p"); x.className = "x"; x.textContent = l.text;
+      box.append(t, f, x);
+      li.append(img, box);
+      li.onclick = () => { map.panTo(l.pos); map.setZoom(18); window.scrollTo({ top: 0, behavior: "smooth" }); };
+      ul.appendChild(li);
+    });
+  }
+
+  function startCatTimer() {
+    clearInterval(catTimer);
+    catTimer = setInterval(() => { catTick(); renderCat(); }, CAT.stepSec * 1000);
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) catTick(); });
+
+  async function releaseCat() {
+    if (!start || !map) return;
+    if (!geminiKey) { openSetup("ネコのおさんぽにはGemini APIキーが必要です。"); return; }
+    if (cat && !confirm("いまのネコの報告は消えて、ここが新しいおうちになります。よいですか？")) return;
+    const btn = $("releaseCat");
+    btn.disabled = true;
+    try {
+      const data = await panoNear(start, 100);
+      if (!data) throw new Error("この近くにはストリートビューがありませんでした。道路の上を指定してください。");
+      const p = data.location.latLng;
+      cat = { home: { lat: p.lat(), lng: p.lng(), pano: data.location.pano, label: startName }, day: null, log: [] };
+      catNewDay();
+      cat.lastTick = Date.now();
+      catPanoData = data;
+      renderedLogKey = "-";
+      saveCat();
+      drawCat();
+      renderCat();
+      $("cat").scrollIntoView({ behavior: "smooth", block: "start" });
+      startCatTimer();
+      if (isDaytime()) {
+        catBusy = true; renderCat();
+        try { await catLook(true); } finally { catBusy = false; renderCat(); }
+      }
+    } catch (e) {
+      showMsg(e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function restoreCat() {
+    try { cat = JSON.parse(store.get(K_CAT) || "null"); } catch { cat = null; }
+    if (!cat?.home) { cat = null; return; }
+    renderCat();
+    drawCat();
+    startCatTimer();
+    catTick();
+  }
+
+  $("releaseCat").onclick = releaseCat;
+  $("catLook").onclick = async () => {
+    if (!cat || catBusy) return;
+    catBusy = true; renderCat();
+    try { await catLook(true); } catch (e) { showMsg(e.message); }
+    finally { catBusy = false; renderCat(); }
+  };
+  $("catFind").onclick = () => {
+    if (!cat) return;
+    map.panTo(isDaytime() ? ll(cat.pos) : ll(cat.home));
+    map.setZoom(17);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  $("catEnd").onclick = () => {
+    if (!confirm("ネコのおさんぽをやめて、報告もすべて消します。よいですか？")) return;
+    clearInterval(catTimer);
+    cat = null;
+    saveCat();
+    if (catMarker) catMarker.map = null;
+    if (catTrail) catTrail.setMap(null);
+    if (catImgUrl) { URL.revokeObjectURL(catImgUrl); catImgUrl = null; }
+    $("catImg").removeAttribute("src");
+    renderCat();
+  };
 
   // ---------- 起動 ----------
   const saved = store.get(K_MAPS);
