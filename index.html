@@ -88,24 +88,36 @@
   .walker { font-size: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
 
   /* ネコのおさんぽ */
-  #cat { display: none; padding: 12px 16px 24px; background: var(--card); border-top: 1px solid var(--line); gap: 10px; }
-  #cat.show { display: grid; }
-  #catTitle { font-size: 16px; font-weight: 700; margin: 0; }
+  #cat, #catRec { display: none; padding: 12px 16px 24px; background: var(--card); border-top: 1px solid var(--line); gap: 10px; }
+  #cat.show, #catRec.show { display: grid; }
+  #catTitle, .rec-title { font-size: 16px; font-weight: 700; margin: 0; }
   #catMeta, .cat-note { font-size: 12px; color: var(--sub); margin: 0; line-height: 1.6; }
+  .cat-note:empty { display: none; }
   #catImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 12px; background: #e9e8e2; display: block; }
   #catImg:not([src]) { display: none; }
   #catFocus { margin: 0; font-size: 14px; font-weight: 600; padding: 4px 10px; border-left: 3px solid #d9822b;
     background: var(--bg); border-radius: 4px; }
   #catFocus:empty { display: none; }
   #catNow { font-size: 15px; line-height: 1.8; margin: 0; }
-  #cat h3 { font-size: 14px; margin: 8px 0 0; }
-  #catLog { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-  #catLog li { display: grid; grid-template-columns: 104px 1fr; gap: 10px; cursor: pointer; }
-  #catLog img { width: 104px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; background: #e9e8e2; }
-  #catLog .t { font-size: 12px; color: var(--sub); }
-  #catLog .f { font-size: 14px; font-weight: 600; }
-  #catLog .x { font-size: 14px; line-height: 1.7; margin: 2px 0 0; }
-  #catLogEmpty { font-size: 13px; color: var(--sub); margin: 0; }
+  #recList { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  #recList li { display: grid; grid-template-columns: 104px 1fr auto; gap: 10px; align-items: start; }
+  #recList li.post { cursor: pointer; }
+  #recList img { width: 104px; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 8px; background: #e9e8e2; display: block; }
+  #recList .t { font-size: 12px; color: var(--sub); }
+  #recList .f { font-size: 14px; font-weight: 600; }
+  #recList .x { font-size: 14px; line-height: 1.7; margin: 2px 0 0; }
+  .star { border: none; background: none; font-size: 22px; line-height: 1; padding: 2px 4px; color: #d9822b; }
+
+  /* 写真を大きく見る */
+  #viewer { position: fixed; inset: 0; z-index: 20; background: rgba(20, 20, 18, .8); display: none;
+    align-items: center; justify-content: center; padding: 16px; }
+  #viewer.show { display: flex; }
+  #viewer .vbox { width: 100%; max-width: 760px; max-height: 100%; overflow: auto; background: var(--card);
+    border-radius: 14px; padding: 12px; display: grid; gap: 8px; }
+  #vImg { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px; background: #e9e8e2; display: block; }
+  #vTime { font-size: 12px; color: var(--sub); }
+  #vFocus { margin: 0; font-size: 15px; font-weight: 700; }
+  #vText { margin: 0; font-size: 15px; line-height: 1.8; }
 
   /* 設定画面 */
   #setup { position: fixed; inset: 0; background: var(--bg); display: none; padding: 24px 20px;
@@ -241,12 +253,38 @@
     <button id="catLook" class="secondary" type="button" style="flex:1">いま見てもらう</button>
     <button id="catFind" class="secondary" type="button" style="flex:1">ネコの居場所へ</button>
   </div>
-  <h3>ネコからの報告</h3>
-  <p id="catLogEmpty">まだ報告はありません。</p>
-  <ul id="catLog"></ul>
   <p class="cat-note">ページを閉じている間もネコは少しずつ歩きます。写真を撮って報告するのは、このページを開いている間だけです。</p>
   <button id="catEnd" class="secondary" type="button">ネコのおさんぽをやめる</button>
 </section>
+
+<section id="catRec">
+  <p class="rec-title">ネコの記録</p>
+  <div class="row" id="recTabs">
+    <button class="chip" data-tab="recent" type="button">最近の報告</button>
+    <button class="chip" data-tab="fav" type="button">☆ お気に入り<span id="tabFavN"></span></button>
+    <button class="chip" data-tab="days" type="button">まいにちのまとめ</button>
+  </div>
+  <p id="recEmpty" class="cat-note"></p>
+  <ul id="recList"></ul>
+  <p class="cat-note">報告は24時間で消えます。☆をつけた報告と、まいにちのまとめは残ります。</p>
+</section>
+
+<div id="viewer" role="dialog" aria-modal="true" aria-label="ネコの報告">
+  <div class="vbox">
+    <img id="vImg" alt="">
+    <div id="vTime"></div>
+    <p id="vFocus"></p>
+    <p id="vText"></p>
+    <p id="vNote" class="cat-note"></p>
+    <div class="row">
+      <button id="vPrev" class="secondary" type="button" aria-label="前の報告">◀</button>
+      <button id="vFav" class="secondary" type="button" style="flex:1"></button>
+      <button id="vMap" class="secondary" type="button" style="flex:1">地図で見る</button>
+      <button id="vNext" class="secondary" type="button" aria-label="次の報告">▶</button>
+    </div>
+    <button id="vClose" class="primary" type="button">閉じる</button>
+  </div>
+</div>
 
 <script>
 (() => {
@@ -654,7 +692,7 @@
       r.onerror = ng;
       r.readAsDataURL(blob);
     });
-    return { blobUrl: URL.createObjectURL(blob), base64, mime: blob.type || "image/jpeg" };
+    return { blob, blobUrl: URL.createObjectURL(blob), base64, mime: blob.type || "image/jpeg" };
   }
 
   const FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"];
@@ -878,6 +916,7 @@ findsは写真の番号順に並べてください。`,
   // 昼のあいだ、ストリートビューの道を人の歩く速さくらいでうろうろして、
   // 数分おきに目の前の景色を見て、気になったものだけ報告する。
   const K_CAT = "osanpo_cat";
+  const K_DAYS = "osanpo_cat_days";
   const CAT = {
     dayStart: 8, dayEnd: 18,   // 歩きまわる時間（時）。夜はおうちで寝る
     stepSec: 15,               // 1歩（パノラマ1つ分・約10m）にかける秒数
@@ -886,15 +925,27 @@ findsは写真の番号順に並べてください。`,
     dailyShots: 120,           // 1日に撮る写真の上限（Street View Static APIの無料枠 月10,000枚に収める）
     roamM: 800,                // おうちからこれ以上離れたら、おうちの方へ戻る
     catchupSteps: 60,          // ページを閉じていた間に進める歩数の上限
-    trailMax: 400, logMax: 40,
+    trailMax: 400,
+    keepHours: 24,             // お気に入りにしていない報告を残す時間
+    daysMax: 60,               // まいにちのまとめを残す件数
   };
-  let cat = null;              // 保存される状態
+  let cat = null;              // 歩いているネコの状態（localStorage）
+  let posts = [];              // 報告（新しい順。写真つきでIndexedDBに保存）
+  let days = [];               // まいにちのまとめ（localStorage）
+  let recTab = "recent";
+  const postUrls = new Map();
   let catMarker = null, catTrail = null, catTimer = null, catBusy = false, catPanoData = null, catImgUrl = null;
 
   const todayKey = () => new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD
   const isDaytime = (d = new Date()) => d.getHours() >= CAT.dayStart && d.getHours() < CAT.dayEnd;
   const angDiff = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
   const ll = (p) => ({ lat: p.lat, lng: p.lng });
+  const fmtHM = (t) => new Date(t).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const fmtDay = (day) => new Date(day + "T00:00").toLocaleDateString("ja-JP", { month: "numeric", day: "numeric", weekday: "short" });
+  function fmtTime(t) {
+    const day = new Date(t).toLocaleDateString("sv-SE");
+    return day === todayKey() ? "今日 " + fmtHM(t) : fmtDay(day) + " " + fmtHM(t);
+  }
 
   // from〜to のうち、歩く時間帯にあたる秒数
   function daytimeSecs(from, to) {
@@ -912,12 +963,122 @@ findsは写真の番号順に並べてください。`,
 
   function saveCat() {
     if (!cat) { store.del(K_CAT); return; }
-    for (let i = 0; i < 4; i++) {
-      try { localStorage.setItem(K_CAT, JSON.stringify(cat)); return; }
-      catch { cat.log = cat.log.slice(0, Math.floor(cat.log.length / 2)); } // 容量オーバーなら古い報告を減らす
-    }
+    store.set(K_CAT, JSON.stringify(cat));
   }
 
+  // ---------- 記録の保存 ----------
+  // 写真は大きいのでIndexedDBへ。使えない環境ではページを開いている間だけメモリに持つ
+  const db = (() => {
+    let opening = null;
+    const mem = new Map();
+    const open = () => (opening ||= new Promise((ok, ng) => {
+      const r = indexedDB.open("osanpo", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("posts", { keyPath: "id" });
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => ng(r.error);
+    }).catch(() => null));
+    const run = async (mode, fn) => {
+      const d = await open();
+      if (!d) return null;
+      return new Promise((ok, ng) => {
+        const t = d.transaction("posts", mode);
+        const req = fn(t.objectStore("posts"));
+        t.oncomplete = () => ok(req.result);
+        t.onerror = t.onabort = () => ng(t.error);
+      });
+    };
+    return {
+      async put(x) { mem.set(x.id, x); await run("readwrite", (s) => s.put(x)).catch(() => {}); },
+      async del(id) { mem.delete(id); await run("readwrite", (s) => s.delete(id)).catch(() => {}); },
+      async all() { return (await run("readonly", (s) => s.getAll()).catch(() => null)) || [...mem.values()]; },
+    };
+  })();
+
+  const urlOf = (p) => {
+    if (!p?.blob) return "";
+    let u = postUrls.get(p.id);
+    if (!u) { u = URL.createObjectURL(p.blob); postUrls.set(p.id, u); }
+    return u;
+  };
+  const sortPosts = () => posts.sort((a, b) => b.t - a.t);
+
+  async function addPost(p) { posts.unshift(p); sortPosts(); await db.put(p); renderRec(); }
+  async function removePost(p) {
+    posts = posts.filter((x) => x !== p);
+    const u = postUrls.get(p.id);
+    if (u) { URL.revokeObjectURL(u); postUrls.delete(p.id); }
+    await db.del(p.id);
+  }
+  async function toggleFav(p) { p.fav = !p.fav; await db.put(p); renderRec(); }
+  async function pruneRecords() {
+    const cutoff = Date.now() - CAT.keepHours * 3600e3;
+    const old = posts.filter((p) => !p.fav && p.t < cutoff);
+    for (const p of old) await removePost(p);
+    if (old.length) renderRec();
+  }
+  function saveDays() {
+    for (let i = 0; i < 3; i++) {
+      try { localStorage.setItem(K_DAYS, JSON.stringify(days)); return; }
+      catch { days = days.slice(0, Math.max(1, Math.floor(days.length / 2))); }
+    }
+  }
+  async function loadRecords() {
+    try { days = JSON.parse(store.get(K_DAYS) || "[]"); } catch { days = []; }
+    posts = await db.all();
+    sortPosts();
+  }
+
+  // ---------- まいにちのまとめ ----------
+  // 夕方・日付が変わったとき・おさんぽをやめたときに、その日の報告から1つ作る
+  const sessionPosts = (c) => posts.filter((p) => p.session === c.started && p.day === c.day);
+
+  async function summarizeDay(c) {
+    if (!c?.day) return;
+    const id = c.day + "-" + c.started;
+    if (days.some((d) => d.id === id)) return;
+    const ps = sessionPosts(c).sort((a, b) => a.t - b.t);
+    if (!ps.length && (c.distM || 0) < 50) return;
+    let title = "", text = "";
+    if (ps.length && geminiKey) {
+      const lines = ps.map((p) => `${fmtHM(p.t)} ${p.focus}：${p.text}`).join("\n");
+      try {
+        const raw = await callGemini([{
+          text:
+`あなたは、今日いちにち街をうろうろ歩いた1匹のネコです。おさんぽ中に足が止まったものの報告を、時間順に渡します。
+一緒に暮らしている人に、今日のおさんぽを振り返って話してください。
+- 街の雰囲気や全体のまとめではなく、今日いちばん話したいことを中心に、ほかに気になったものにも少しふれて2〜3文で。
+- ネコの一人称「ぼく」で、やわらかい日本語。語尾にむりに「にゃ」はつけない。
+- 報告に書かれていないことは足さない。
+
+報告：
+${lines}
+
+次のJSONだけを返してください。
+{"title": "今日のおさんぽのタイトル（15文字以内。いちばん気になったものにちなむ）", "text": "振り返り"}`,
+        }], "まとめを書いています", null);
+        const j = JSON.parse(raw.replace(/^```json\s*|```$/g, "").trim());
+        title = String(j.title || "");
+        text = String(j.text || "");
+      } catch { /* まとめが書けなくても、報告の一覧から作る */ }
+    }
+    if (!text) {
+      text = ps.length
+        ? ps.map((p) => p.focus).filter(Boolean).join("、") + "が気になったみたい。"
+        : "今日はとくに足が止まるものはなかったみたい。";
+    }
+    const cover = ps.find((p) => p.fav) || ps[0];
+    days.unshift({
+      id, day: c.day, title: title || "ネコのおさんぽ", text,
+      km: +((c.distM || 0) / 1000).toFixed(1), looks: c.shots || 0, finds: ps.length,
+      home: c.home?.label || "", thumb: cover ? await makeThumb(urlOf(cover), 240, 150) : "",
+    });
+    days.sort((a, b) => b.id.localeCompare(a.id));
+    days = days.slice(0, CAT.daysMax);
+    saveDays();
+    renderRec();
+  }
+
+  // ---------- ネコの移動 ----------
   async function panoById(pano) {
     try { return (await svService.getPanorama({ pano })).data; } catch { return null; }
   }
@@ -927,10 +1088,11 @@ findsは写真の番号順に並べてください。`,
     } catch { return null; }
   }
 
-  // 日付が変わったら、おうちから出直す
-  function catNewDay() {
+  // 日付が変わったら、前の日のまとめを作って、おうちから出直す
+  async function catNewDay() {
     const today = todayKey();
     if (cat.day === today) return;
+    if (cat.day) await summarizeDay(cat);
     cat.day = today;
     cat.pano = cat.home.pano;
     cat.pos = ll(cat.home);
@@ -950,9 +1112,10 @@ findsは写真の番号順に並べてください。`,
     const links = (data?.links || []).filter((l) => l.pano);
     if (!links.length) { cat.heading = (cat.heading + 180) % 360; return; }
     const here = new google.maps.LatLng(cat.pos);
-    const farAway = g.computeDistanceBetween(here, new google.maps.LatLng(ll(cat.home))) > CAT.roamM;
+    const home = new google.maps.LatLng(ll(cat.home));
+    const farAway = g.computeDistanceBetween(here, home) > CAT.roamM;
     let want = cat.heading;
-    if (farAway) want = g.computeHeading(here, new google.maps.LatLng(ll(cat.home)));
+    if (farAway) want = g.computeHeading(here, home);
     else if (cat.turn) { want = (cat.heading + cat.turn + 360) % 360; cat.turn = 0; }
     else if (Math.random() < 0.15) want = Math.random() * 360;
     // 来た道を引き返すのは、行き止まりかおうちに帰るときだけ
@@ -971,13 +1134,14 @@ findsは写真の番号順に並べてください。`,
     catPanoData = nd;
   }
 
-  function makeThumb(src) {
+  function makeThumb(src, w = 320, h = 200) {
     return new Promise((ok) => {
+      if (!src) { ok(""); return; }
       const im = new Image();
       im.onload = () => {
         const c = document.createElement("canvas");
-        c.width = 320; c.height = 200;
-        c.getContext("2d").drawImage(im, 0, 0, 320, 200);
+        c.width = w; c.height = h;
+        c.getContext("2d").drawImage(im, 0, 0, w, h);
         ok(c.toDataURL("image/jpeg", 0.7));
       };
       im.onerror = () => ok("");
@@ -986,7 +1150,7 @@ findsは写真の番号順に並べてください。`,
   }
 
   async function askCat(img) {
-    const recent = cat.log.slice(0, 5).map((l) => l.focus).filter(Boolean);
+    const recent = sessionPosts(cat).slice(0, 5).map((p) => p.focus).filter(Boolean);
     const parts = [{
       text:
 `あなたは、街をうろうろ歩いている1匹のネコです。いま目の前に見えている景色の写真を1枚渡します。
@@ -1032,10 +1196,14 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
     catImgUrl = img.blobUrl;
     $("catImg").src = img.blobUrl;
     const r = await askCat(img);
+    if (!cat) return; // 考えている間にやめた
     cat.turn = r.turn;
     if (r.interesting) {
-      cat.log.unshift({ t: Date.now(), focus: r.focus, text: r.text, pos: ll(cat.pos), thumb: await makeThumb(img.blobUrl) });
-      cat.log = cat.log.slice(0, CAT.logMax);
+      const t = Date.now();
+      await addPost({
+        id: "p" + t, t, day: cat.day, session: cat.started,
+        focus: r.focus, text: r.text, pos: ll(cat.pos), fav: false, blob: img.blob,
+      });
     }
     cat.now = r.interesting ? { focus: r.focus, text: r.text } : { focus: "", text: "とくに足が止まるものはなかったみたい。" };
     saveCat();
@@ -1046,16 +1214,19 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
     catBusy = true;
     renderCat();
     try {
-      catNewDay();
+      await catNewDay();
       const now = Date.now();
       const secs = daytimeSecs(cat.lastTick, now);
       const steps = Math.min(Math.floor(secs / CAT.stepSec), CAT.catchupSteps);
       cat.lastTick = isDaytime() ? now - (secs % CAT.stepSec) * 1000 : now;
       if (steps > 3) $("catNow").textContent = "ネコが歩いた道をたどっています…";
-      for (let i = 0; i < steps; i++) await catStep();
+      for (let i = 0; i < steps && cat; i++) await catStep();
+      if (!cat) return;
       saveCat();
       drawCat();
       if (isDaytime() && !document.hidden && now - cat.lastLook >= CAT.lookMin * 60000) await catLook();
+      if (cat && new Date().getHours() >= CAT.dayEnd) await summarizeDay(cat); // 夕方になったら今日のまとめ
+      await pruneRecords();
     } catch (e) {
       showMsg(e.message);
     } finally {
@@ -1081,13 +1252,6 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
     catTrail.setMap(map);
   }
 
-  function fmtTime(t) {
-    const d = new Date(t);
-    const hm = d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-    return d.toLocaleDateString("sv-SE") === todayKey() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`;
-  }
-
-  let renderedLogKey = "";
   function renderCat() {
     if (!cat) { $("cat").classList.remove("show"); return; }
     $("cat").classList.add("show");
@@ -1106,50 +1270,143 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
       $("catNow").textContent = cat.now?.text || (day ? "" : "いまはおうちで寝ています。");
     }
     $("catLook").disabled = catBusy;
-
-    const key = cat.log.map((l) => l.t).join(",");
-    if (key === renderedLogKey) return;
-    renderedLogKey = key;
-    const ul = $("catLog");
-    ul.innerHTML = "";
-    $("catLogEmpty").style.display = cat.log.length ? "none" : "";
-    cat.log.forEach((l) => {
-      const li = document.createElement("li");
-      const img = document.createElement("img");
-      if (l.thumb) img.src = l.thumb;
-      img.alt = "";
-      const box = document.createElement("div");
-      const t = document.createElement("div"); t.className = "t"; t.textContent = fmtTime(l.t);
-      const f = document.createElement("div"); f.className = "f"; f.textContent = l.focus;
-      const x = document.createElement("p"); x.className = "x"; x.textContent = l.text;
-      box.append(t, f, x);
-      li.append(img, box);
-      li.onclick = () => { map.panTo(l.pos); map.setZoom(18); window.scrollTo({ top: 0, behavior: "smooth" }); };
-      ul.appendChild(li);
-    });
   }
 
+  // ---------- 記録の表示 ----------
+  function renderRec() {
+    const has = posts.length > 0 || days.length > 0;
+    $("catRec").classList.toggle("show", has);
+    if (!has) return;
+    document.querySelectorAll("#recTabs .chip").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === recTab)));
+    const favN = posts.filter((p) => p.fav).length;
+    $("tabFavN").textContent = favN ? `（${favN}）` : "";
+    const ul = $("recList");
+    ul.innerHTML = "";
+    let empty = "";
+    const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; return e; };
+
+    if (recTab === "days") {
+      if (!days.length) empty = "まだまとめはありません。夕方になるか、おさんぽをやめるとできます。";
+      days.forEach((d) => {
+        const li = document.createElement("li");
+        const img = document.createElement("img");
+        if (d.thumb) img.src = d.thumb;
+        img.alt = "";
+        const box = document.createElement("div");
+        box.append(
+          mk("div", "t", `${fmtDay(d.day)} ・ ${d.km} km ・ ${d.finds} か所で足が止まった`),
+          mk("div", "f", d.title),
+          mk("p", "x", d.text),
+        );
+        li.append(img, box, document.createElement("span"));
+        ul.appendChild(li);
+      });
+    } else {
+      const cutoff = Date.now() - CAT.keepHours * 3600e3;
+      const list = recTab === "fav" ? posts.filter((p) => p.fav) : posts.filter((p) => p.t >= cutoff);
+      if (!list.length) empty = recTab === "fav" ? "残しておきたい報告に☆をつけると、ここに残ります。" : "まだ報告はありません。";
+      list.forEach((p, i) => {
+        const li = document.createElement("li");
+        li.className = "post";
+        const img = document.createElement("img");
+        img.src = urlOf(p);
+        img.alt = "";
+        const box = document.createElement("div");
+        box.append(mk("div", "t", fmtTime(p.t)), mk("div", "f", p.focus), mk("p", "x", p.text));
+        const star = mk("button", "star", p.fav ? "★" : "☆");
+        star.type = "button";
+        star.setAttribute("aria-label", p.fav ? "お気に入りから外す" : "お気に入りに残す");
+        star.onclick = (e) => { e.stopPropagation(); toggleFav(p); };
+        li.append(img, box, star);
+        li.onclick = () => openViewer(list, i);
+        ul.appendChild(li);
+      });
+    }
+    $("recEmpty").textContent = empty;
+  }
+  document.querySelectorAll("#recTabs .chip").forEach((b) => {
+    b.onclick = () => { recTab = b.dataset.tab; renderRec(); };
+  });
+
+  // ---------- 写真を大きく見る ----------
+  let viewer = null; // { list, i }
+  function openViewer(list, i) {
+    viewer = { list, i };
+    showViewer();
+    $("viewer").classList.add("show");
+    $("vClose").focus();
+  }
+  function showViewer() {
+    const p = viewer.list[viewer.i];
+    $("vImg").src = urlOf(p);
+    $("vImg").alt = p.focus || "ネコが見た景色";
+    $("vTime").textContent = fmtTime(p.t);
+    $("vFocus").textContent = p.focus;
+    $("vText").textContent = p.text;
+    $("vFav").textContent = p.fav ? "★ お気に入り" : "☆ お気に入り";
+    $("vNote").textContent = p.fav ? "" : "お気に入りにしない報告は24時間で消えます。";
+    $("vPrev").disabled = viewer.i === 0;
+    $("vNext").disabled = viewer.i === viewer.list.length - 1;
+  }
+  function closeViewer() { $("viewer").classList.remove("show"); viewer = null; }
+  const moveViewer = (d) => {
+    if (!viewer) return;
+    const i = viewer.i + d;
+    if (i >= 0 && i < viewer.list.length) { viewer.i = i; showViewer(); }
+  };
+  $("vPrev").onclick = () => moveViewer(-1);
+  $("vNext").onclick = () => moveViewer(1);
+  $("vFav").onclick = async () => { if (!viewer) return; await toggleFav(viewer.list[viewer.i]); showViewer(); };
+  $("vMap").onclick = () => {
+    if (!viewer || !map) return;
+    const p = viewer.list[viewer.i];
+    closeViewer();
+    map.panTo(p.pos);
+    map.setZoom(18);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  $("vClose").onclick = closeViewer;
+  $("viewer").addEventListener("click", (e) => { if (e.target === $("viewer")) closeViewer(); });
+  document.addEventListener("keydown", (e) => {
+    if (!viewer) return;
+    if (e.key === "Escape") closeViewer();
+    else if (e.key === "ArrowLeft") moveViewer(-1);
+    else if (e.key === "ArrowRight") moveViewer(1);
+  });
+
+  // ---------- 放す・やめる ----------
   function startCatTimer() {
     clearInterval(catTimer);
     catTimer = setInterval(() => { catTick(); renderCat(); }, CAT.stepSec * 1000);
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden) catTick(); });
 
+  function hideCatOnMap() {
+    if (catMarker) catMarker.map = null;
+    if (catTrail) catTrail.setMap(null);
+    if (catImgUrl) { URL.revokeObjectURL(catImgUrl); catImgUrl = null; }
+    $("catImg").removeAttribute("src");
+  }
+
   async function releaseCat() {
     if (!start || !map) return;
     if (!geminiKey) { openSetup("ネコのおさんぽにはGemini APIキーが必要です。"); return; }
-    if (cat && !confirm("いまのネコの報告は消えて、ここが新しいおうちになります。よいですか？")) return;
+    if (cat && !confirm("いまのおさんぽを終えて、ここを新しいおうちにします。今日のまとめと報告は残ります。よいですか？")) return;
     const btn = $("releaseCat");
     btn.disabled = true;
     try {
       const data = await panoNear(start, 100);
       if (!data) throw new Error("この近くにはストリートビューがありませんでした。道路の上を指定してください。");
+      if (cat) {
+        const old = cat;
+        cat = null;
+        await summarizeDay(old);
+      }
       const p = data.location.latLng;
-      cat = { home: { lat: p.lat(), lng: p.lng(), pano: data.location.pano, label: startName }, day: null, log: [] };
-      catNewDay();
+      cat = { home: { lat: p.lat(), lng: p.lng(), pano: data.location.pano, label: startName }, started: Date.now(), day: null };
+      await catNewDay();
       cat.lastTick = Date.now();
       catPanoData = data;
-      renderedLogKey = "-";
       saveCat();
       drawCat();
       renderCat();
@@ -1166,13 +1423,33 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
     }
   }
 
-  function restoreCat() {
+  async function restoreCat() {
+    await loadRecords();
     try { cat = JSON.parse(store.get(K_CAT) || "null"); } catch { cat = null; }
-    if (!cat?.home) { cat = null; return; }
-    renderCat();
-    drawCat();
-    startCatTimer();
-    catTick();
+    if (cat?.home) {
+      if (!cat.started) cat.started = cat.lastTick || Date.now();
+      // 前の版の報告（小さい画像つき）を引っ越す
+      if (Array.isArray(cat.log)) {
+        for (const l of cat.log) {
+          let blob = null;
+          try { if (l.thumb) blob = await (await fetch(l.thumb)).blob(); } catch {}
+          await addPost({
+            id: "p" + l.t, t: l.t, day: new Date(l.t).toLocaleDateString("sv-SE"), session: cat.started,
+            focus: l.focus, text: l.text, pos: l.pos, fav: false, blob,
+          });
+        }
+        delete cat.log;
+        saveCat();
+      }
+      renderCat();
+      drawCat();
+      startCatTimer();
+      await catTick();
+    } else {
+      cat = null;
+    }
+    await pruneRecords();
+    renderRec();
   }
 
   $("releaseCat").onclick = releaseCat;
@@ -1188,16 +1465,19 @@ ${recent.length ? "- 最近もう報告したもの：" + recent.join("、") + "
     map.setZoom(17);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  $("catEnd").onclick = () => {
-    if (!confirm("ネコのおさんぽをやめて、報告もすべて消します。よいですか？")) return;
+  $("catEnd").onclick = async () => {
+    if (!confirm("ネコのおさんぽをやめますか？\n今日のまとめは残ります。報告は24時間で消えます（☆をつけたものは残ります）。")) return;
     clearInterval(catTimer);
+    const old = cat;
     cat = null;
     saveCat();
-    if (catMarker) catMarker.map = null;
-    if (catTrail) catTrail.setMap(null);
-    if (catImgUrl) { URL.revokeObjectURL(catImgUrl); catImgUrl = null; }
-    $("catImg").removeAttribute("src");
+    hideCatOnMap();
     renderCat();
+    showMsg("今日のまとめを書いています…", "info");
+    try { await summarizeDay(old); } finally { hideMsg(); }
+    recTab = days.length ? "days" : "recent";
+    renderRec();
+    $("catRec").scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   // ---------- 起動 ----------
